@@ -76,7 +76,7 @@ jobs:
         BOOT_SIGN_KEY: ${{ secrets.BOOT_SIGN_KEY }}
 
     - name: Patch AnyKernel3 Script for YukiSU and Kasumi LKM Loading
-      if: contains(inputs.feature_set, 'KSUN') || inputs.feature_set == 'FULL'
+      if: contains(inputs.feature_set, 'YUKISU') || inputs.feature_set == 'FULL'
       shell: bash
       working-directory: ${{ github.workspace }}/AnyKernel3
       run: |
@@ -139,13 +139,13 @@ jobs:
         os_patch_level: ${{ inputs.os_patch_level }}
 
     - name: Setup YukiSU
-      if: contains(inputs.feature_set, 'KSUN') || inputs.feature_set == 'FULL'
+      if: contains(inputs.feature_set, 'YUKISU') || inputs.feature_set == 'FULL'
       uses: ./.github/actions/yukisu
       with:
         use_latest_commits: ${{ inputs.use_latest_commits }}
 
     - name: Setup Kasumi
-      if: contains(inputs.feature_set, 'KSUN') || inputs.feature_set == 'FULL'
+      if: contains(inputs.feature_set, 'YUKISU') || inputs.feature_set == 'FULL'
       uses: ./.github/actions/kasumi
       with:
         use_latest_commits: ${{ inputs.use_latest_commits }}
@@ -365,7 +365,7 @@ jobs:
         version: ${{ inputs.version }}
 
     - name: Copy Kernel Modules to AnyKernel3
-      if: contains(inputs.feature_set, 'KSUN') || inputs.feature_set == 'FULL'
+      if: contains(inputs.feature_set, 'YUKISU') || inputs.feature_set == 'FULL'
       shell: bash
       run: |
         mkdir -p "${{ github.workspace }}/AnyKernel3/ramdisk/lib/modules"

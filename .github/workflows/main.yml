@@ -283,8 +283,8 @@ jobs:
         echo "KSU Git Tag: $KSU_GIT_TAG"
         echo "KSU Manager: $KSU_MANAGER"
 
-        echo "KSUN_BRANCH=$YUKISU_BRANCH" >> $GITHUB_ENV
-        echo "KSUN_COMMIT=$YUKISU_COMMIT" >> $GITHUB_ENV
+        echo "YUKISU_BRANCH=$YUKISU_BRANCH" >> $GITHUB_ENV
+        echo "YUKISU_COMMIT=$YUKISU_COMMIT" >> $GITHUB_ENV
         echo "KSU_COMMITS_COUNT=$COMMITS_COUNT" >> $GITHUB_ENV
         echo "KSU_VERSION=$KSU_VERSION" >> $GITHUB_ENV
         echo "KSU_GIT_TAG=$KSU_GIT_TAG" >> $GITHUB_ENV
@@ -484,8 +484,8 @@ jobs:
         echo "KSU Manager: $KSU_MANAGER"
 
         # Export as environment for next step
-        echo "KSUN_BRANCH=$YUKISU_BRANCH" >> $GITHUB_ENV
-        echo "KSUN_COMMIT=$YUKISU_COMMIT" >> $GITHUB_ENV
+        echo "YUKISU_BRANCH=$YUKISU_BRANCH" >> $GITHUB_ENV
+        echo "YUKISU_COMMIT=$YUKISU_COMMIT" >> $GITHUB_ENV
         echo "KSU_COMMITS_COUNT=$COMMITS_COUNT" >> $GITHUB_ENV
         echo "KSU_VERSION=$KSU_VERSION" >> $GITHUB_ENV
         echo "KSU_GIT_TAG=$KSU_GIT_TAG" >> $GITHUB_ENV

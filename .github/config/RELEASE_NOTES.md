@@ -25,10 +25,10 @@ Manager: {{KSU_MANAGER}}
 `{{KSU_GIT_TAG}}`
 
 **Branch**  
-`{{KSUN_BRANCH}}`
+`{{YUKISU_BRANCH}}`
 
 **Commit**  
-`{{KSUN_COMMIT}}`
+`{{YUKISU_COMMIT}}`
 
 ## [Kasumi](https://github.com/Anatdx/Kasumi)
 
