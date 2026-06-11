@@ -2,8 +2,8 @@
 
 # 🔥 Wild Kernels for Android
 
-[![KernelSU](https://img.shields.io/badge/KernelSU-Supported-green)](https://kernelsu.org/)
-[![SUSFS](https://img.shields.io/badge/SUSFS-Integrated-orange)](https://gitlab.com/simonpunk/susfs4ksu)
+[![YukiSU](https://img.shields.io/badge/YukiSU-Supported-green)](https://github.com/Anatdx/YukiSU)
+[![Kasumi](https://img.shields.io/badge/Kasumi-Integrated-orange)](https://github.com/Anatdx/Kasumi)
 
 </div>
 
@@ -49,17 +49,17 @@ For GKI installation, please follow the official guide:
 
 ## ✨ Features
 
-- 🔐 **KernelSU**: A root solution for Android GKI devices that works in kernel mode and grants root permission to userspace applications directly in kernel space
-- 🛡️ **SUSFS**: An addon root hiding kernel patches and userspace module for KernelSU
+- 🔐 **YukiSU**: A kernel-based root solution for Android GKI/Linux devices, completely rewritten in C++
+- 🛡️ **Kasumi**: An out-of-tree Linux kernel module for Android GKI/Linux path control in root/SU environments
 
 ---
 
 ## 🏆 Credits
 
 - 🔐 **KernelSU**: Developed by [tiann](https://github.com/tiann/KernelSU)
-- 🚀 **KernelSU-Next**: Developed by [rifsxd](https://github.com/KernelSU-Next/KernelSU-Next)
+- 🚀 **YukiSU**: Developed by [Anatdx](https://github.com/Anatdx/YukiSU)
 - ✨ **Magic-KSU**: Developed by [5ec1cff](https://github.com/5ec1cff/KernelSU)
-- 🛡️ **SUSFS**: Developed by [simonpunk](https://gitlab.com/simonpunk/susfs4ksu.git)
+- 🛡️ **Kasumi**: Developed by [Anatdx](https://github.com/Anatdx/Kasumi)
 - 🛡️ **Baseband-guard (BBG)**: Developed by [vc-teahouse](https://github.com/vc-teahouse/Baseband-guard)
 - 📦 **SUSFS Module**: Developed by [sidex15](https://github.com/sidex15)
 - 👑 **Sultan Kernels**: Developed by [kerneltoast](https://github.com/kerneltoast)

@@ -6,23 +6,17 @@
 Join the telegram here: https://t.me/WildKernelsTG
 
 # Features
-- [KernelSU-Next](#kernelsu-next)
-- [SUSFS v2.1.0](#susfs-v210)
+- [YukiSU](#yukisu)
+- [Kasumi](#kasumi)
 - [Baseband Guard (BBG)](#baseband-guard-bbg)
 - [DroidSpaces-OSS](#droidspaces-oss)
 - [Networking Improvements](#networking)
 
-## [KernelSU-Next](https://github.com/KernelSU-Next/KernelSU-Next)
+## [YukiSU](https://github.com/Anatdx/YukiSU)
 
-A kernel-based root solution for Android devices.
-
-> [!WARNING]
-> This release uses the [pershoot/KernelSU-Next](https://github.com/pershoot/KernelSU-Next) fork. The fork maintainer has said it is not ready for production use, so treat it as use at your own risk.
+A kernel-based root solution for Android GKI/Linux devices, completely rewritten in C++.
 
 Manager: {{KSU_MANAGER}}
-
-> [!IMPORTANT]
-> For best compatiblity ensure your Manager Version and Kernel Version match eg. 30100 = 30100.
 
 **Version**  
 `{{KSU_VERSION}}`
@@ -36,22 +30,19 @@ Manager: {{KSU_MANAGER}}
 **Commit**  
 `{{KSUN_COMMIT}}`
 
-## [SUSFS v2.1.0](https://gitlab.com/simonpunk/susfs4ksu)
+## [Kasumi](https://github.com/Anatdx/Kasumi)
 
-A KSU addon for hiding root using kernel patches and a userspace module!
+An out-of-tree Linux kernel module for Android GKI/Linux path control in root/SU environments.
 
-Reccomended Module: [susfs4ksu-module by sidex15](https://github.com/sidex15/susfs4ksu-module)
+- Path redirection and spoofing via anonymous fd + ioctl control plane
+- Symbol resolution fallbacks and strict CFI compatibility
+- Directory entry hiding and maps/cmdline/statfs spoofing
 
-- SUS_PATH - Hide suspicious paths
-- SUS_MOUNT - Hide mount points (no CLI support)
-- SUS_KSTAT - Spoof kernel statistics
-- SPOOF_UNAME - Kernel version spoofing
-- SPOOF_CMDLINE - Boot parameter spoofing
-- OPEN_REDIRECT - File access redirection
-- SUS_MAP - Memory mapping protection
-- AVC_SPOOF - Spoof procfs avc denial logs
+**Branch**  
+`{{KASUMI_BRANCH}}`
 
-{{SUSFS_BRANCHES}}
+**Commit**  
+`{{KASUMI_COMMIT}}`
 
 ## [Baseband Guard (BBG)](https://github.com/vc-teahouse/Baseband-guard)
 
@@ -96,8 +87,8 @@ b. KSU LKM (boot/init_boot/vendor_boot‑patched): Flash back the stock boot/ini
 c. KSU GKI: if you are 100% sure you already flashed stock init_boot/boot/vendor_boot, no action is needed; otherwise, follow the same steps as KSU LKM.
 d. APatch: remove /data/adb contents to avoid leftover root conflicts after flashing the AnyKernel3 ZIP.
 Flash the ZIP to the active slot using Kernel Flasher.
-Install the KernelSU‑Next Manager APK, same version as mentioned in the release notes.
-Open the KernelSU‑Next app.
+Install the YukiSU Manager APK, same version as mentioned in the release notes.
+Open the YukiSU app.
 Reboot the device if you performed any cleanup in step 2
 
 ## Force Load Kernel Modules (Bypass) — flashing with `Bypass-Image`

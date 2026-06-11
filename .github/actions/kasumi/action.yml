@@ -1,0 +1,69 @@
+name: Setup Kasumi
+description: Download and configure Kasumi as an in-tree kernel module
+inputs:
+  use_latest_commits:
+    description: 'Use the latest commit on the branch instead of the pinned commit'
+    required: false
+    default: true
+
+runs:
+  using: composite
+  steps:
+    - name: Download Kasumi
+      shell: bash
+      working-directory: ${{ github.workspace }}/kernel
+      run: |
+        set -euo pipefail
+
+        KASUMI_REPO="https://github.com/Anatdx/Kasumi.git"
+        KASUMI_BRANCH="main"
+
+        if [ "${{ inputs.use_latest_commits }}" = "true" ]; then
+          echo "Using latest Kasumi from branch: $KASUMI_BRANCH"
+          git clone --depth=50 --branch "$KASUMI_BRANCH" "$KASUMI_REPO" Kasumi
+        else
+          COMMITS_JSON="${{ github.workspace }}/.github/config/commits.json"
+          KASUMI_SETUP_COMMIT=$(jq -er '.kasumi.main' "$COMMITS_JSON")
+          echo "Using pinned Kasumi commit: $KASUMI_SETUP_COMMIT"
+          git clone "$KASUMI_REPO" Kasumi
+          git -C Kasumi fetch --depth=50 origin "$KASUMI_SETUP_COMMIT"
+          git -C Kasumi checkout "$KASUMI_SETUP_COMMIT"
+        fi
+
+    - name: Integrate Kasumi into Kernel Tree
+      shell: bash
+      working-directory: ${{ github.workspace }}/kernel
+      run: |
+        set -euo pipefail
+
+        if [ -d "common/drivers" ]; then
+          DRIVER_DIR="common/drivers"
+        else
+          DRIVER_DIR="drivers"
+        fi
+
+        echo "Integrating Kasumi into $DRIVER_DIR"
+        mkdir -p "$DRIVER_DIR/kasumi"
+        cp -r Kasumi/src/. "$DRIVER_DIR/kasumi/"
+
+        # Create Kconfig for drivers/kasumi
+        cat << 'EOF' > "$DRIVER_DIR/kasumi/Kconfig"
+config KASUMI
+	tristate "Kasumi LKM support"
+	default m
+	help
+	  Enable Kasumi out-of-tree Linux kernel module in-tree.
+EOF
+
+        # Hook into drivers Makefile and Kconfig
+        grep -q "kasumi" "$DRIVER_DIR/Makefile" || echo "obj-\$(CONFIG_KASUMI) += kasumi/" >> "$DRIVER_DIR/Makefile"
+        grep -q "kasumi" "$DRIVER_DIR/Kconfig" || sed -i '/endmenu/i\source "drivers/kasumi/Kconfig"' "$DRIVER_DIR/Kconfig"
+
+        # Change Makefile from obj-m to obj-$(CONFIG_KASUMI)
+        sed -i 's/obj-m += kasumi_lkm.o/obj-$(CONFIG_KASUMI) += kasumi_lkm.o/' "$DRIVER_DIR/kasumi/Makefile"
+
+    - name: Enable Kernel Configs
+      uses: ./.github/actions/set-kernel-config
+      with:
+        config_list: |
+          CONFIG_KASUMI=m

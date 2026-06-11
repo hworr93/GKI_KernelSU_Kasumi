@@ -46,22 +46,27 @@ jobs:
           }
 
           github_commit_message() {
-            local sha="$1"
-            curl -fsSL "https://api.github.com/repos/KernelSU-Next/KernelSU-Next/commits/${sha}" | jq -r '.commit.message | split("\n")[0]'
+            local repo="$1"
+            local sha="$2"
+            curl -fsSL "https://api.github.com/repos/${repo}/commits/${sha}" | jq -r '.commit.message | split("\n")[0]'
           }
 
           github_latest_commit() {
-            curl -fsSL "https://api.github.com/repos/KernelSU-Next/KernelSU-Next/commits/dev" | jq -r '.sha'
+            local repo="$1"
+            local branch="$2"
+            curl -fsSL "https://api.github.com/repos/${repo}/commits/${branch}" | jq -r '.sha'
           }
 
           github_latest_message() {
-            curl -fsSL "https://api.github.com/repos/KernelSU-Next/KernelSU-Next/commits/dev" | jq -r '.commit.message | split("\n")[0]'
+            local repo="$1"
+            local branch="$2"
+            curl -fsSL "https://api.github.com/repos/${repo}/commits/${branch}" | jq -r '.commit.message | split("\n")[0]'
           }
 
           {
             echo "# Commit Status Report"
             echo ""
-            echo "This report shows the pinned commit from this repository and the latest upstream commit for each supported SUSFS branch plus KernelSU-Next."
+            echo "This report shows the pinned commit from this repository and the latest upstream commit for each supported SUSFS branch plus YukiSU and Kasumi."
             echo ""
           } >> "$summary_file"
 
@@ -86,18 +91,36 @@ jobs:
 
           {
             echo ""
-            echo "## KernelSU-Next"
+            echo "## YukiSU"
             echo ""
             echo "| Branch | Current Commit | Current Message | Latest Commit | Latest Message |"
             echo "| --- | --- | --- | --- | --- |"
           } >> "$summary_file"
 
-          current_kernelsu_commit="$(jq -r '.kernelsu.dev' "$COMMITS_JSON")"
-          latest_kernelsu_commit="$(github_latest_commit)"
-          current_kernelsu_message="$(github_commit_message "$current_kernelsu_commit")"
-          latest_kernelsu_message="$(github_latest_message)"
+          current_yukisu_commit="$(jq -r '.yukisu.main' "$COMMITS_JSON")"
+          latest_yukisu_commit="$(github_latest_commit "Anatdx/YukiSU" "main")"
+          current_yukisu_message="$(github_commit_message "Anatdx/YukiSU" "$current_yukisu_commit")"
+          latest_yukisu_message="$(github_latest_message "Anatdx/YukiSU" "main")"
 
-          current_kernelsu_message="$(sanitize_cell "$current_kernelsu_message")"
-          latest_kernelsu_message="$(sanitize_cell "$latest_kernelsu_message")"
+          current_yukisu_message="$(sanitize_cell "$current_yukisu_message")"
+          latest_yukisu_message="$(sanitize_cell "$latest_yukisu_message")"
 
-          printf '| %s | %s | %s | %s | %s |\n' "dev" "$current_kernelsu_commit" "$current_kernelsu_message" "$latest_kernelsu_commit" "$latest_kernelsu_message" >> "$summary_file"
+          printf '| %s | %s | %s | %s | %s |\n' "main" "$current_yukisu_commit" "$current_yukisu_message" "$latest_yukisu_commit" "$latest_yukisu_message" >> "$summary_file"
+
+          {
+            echo ""
+            echo "## Kasumi"
+            echo ""
+            echo "| Branch | Current Commit | Current Message | Latest Commit | Latest Message |"
+            echo "| --- | --- | --- | --- | --- |"
+          } >> "$summary_file"
+
+          current_kasumi_commit="$(jq -r '.kasumi.main' "$COMMITS_JSON")"
+          latest_kasumi_commit="$(github_latest_commit "Anatdx/Kasumi" "main")"
+          current_kasumi_message="$(github_commit_message "Anatdx/Kasumi" "$current_kasumi_commit")"
+          latest_kasumi_message="$(github_latest_message "Anatdx/Kasumi" "main")"
+
+          current_kasumi_message="$(sanitize_cell "$current_kasumi_message")"
+          latest_kasumi_message="$(sanitize_cell "$latest_kasumi_message")"
+
+          printf '| %s | %s | %s | %s | %s |\n' "main" "$current_kasumi_commit" "$current_kasumi_message" "$latest_kasumi_commit" "$latest_kasumi_message" >> "$summary_file"

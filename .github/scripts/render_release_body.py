@@ -10,6 +10,8 @@ PLACEHOLDERS = {
     "{{KSUN_BRANCH}}": lambda: os.environ.get("KSUN_BRANCH", "dev"),
     "{{KSUN_COMMIT}}": lambda: os.environ.get("KSUN_COMMIT", "unknown"),
     "{{KSU_MANAGER}}": lambda: os.environ.get("KSU_MANAGER", "Placeholder"),
+    "{{KASUMI_BRANCH}}": lambda: os.environ.get("KASUMI_BRANCH", "main"),
+    "{{KASUMI_COMMIT}}": lambda: os.environ.get("KASUMI_COMMIT", "unknown"),
 }
 
 
@@ -70,7 +72,7 @@ for line in data["release"]["disclaimer"]:
 
 kernelsu = data.get("kernelsu", {})
 emit()
-emit(f"## {kernelsu.get('name', 'KernelSU-Next')}")
+emit(f"## {kernelsu.get('name', 'YukiSU')}")
 emit(f"- Version: {os.environ.get('KSU_VERSION', kernelsu.get('version', 'unknown'))}")
 emit(f"- Tag: {os.environ.get('KSU_GIT_TAG', kernelsu.get('tag', 'no-tag'))}")
 emit(f"- Branch: {os.environ.get('KSUN_BRANCH', kernelsu.get('branch', 'dev'))}")

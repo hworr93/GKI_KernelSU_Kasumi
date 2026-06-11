@@ -74,6 +74,14 @@ jobs:
       uses: ./.github/actions/setup-build-environment
       env:
         BOOT_SIGN_KEY: ${{ secrets.BOOT_SIGN_KEY }}
+
+    - name: Patch AnyKernel3 Script for YukiSU and Kasumi LKM Loading
+      if: contains(inputs.feature_set, 'KSUN') || inputs.feature_set == 'FULL'
+      shell: bash
+      working-directory: ${{ github.workspace }}/AnyKernel3
+      run: |
+        set -ex
+        sed -i '/unpack_ramdisk/a \    # Add YukiSU and Kasumi modules to modules.load\n    for load_file in $(find "$RAMDISK" -name "modules.load"); do\n        ui_print "  -> Adding YukiSU and Kasumi to $(basename "$load_file")"\n        grep -q "kernelsu.ko" "$load_file" || echo "kernelsu.ko" >> "$load_file"\n        grep -q "kasumi_lkm.ko" "$load_file" || echo "kasumi_lkm.ko" >> "$load_file"\n    done' anykernel.sh
           
     - name: Download Kernel Repository
       uses: ./.github/actions/download-kernel
@@ -130,14 +138,20 @@ jobs:
         sublevel: ${{ steps.extract.outputs.sublevel }}
         os_patch_level: ${{ inputs.os_patch_level }}
 
-    - name: Setup KernelSU-Next
+    - name: Setup YukiSU
       if: contains(inputs.feature_set, 'KSUN') || inputs.feature_set == 'FULL'
-      uses: ./.github/actions/kernelsu
+      uses: ./.github/actions/yukisu
+      with:
+        use_latest_commits: ${{ inputs.use_latest_commits }}
+
+    - name: Setup Kasumi
+      if: contains(inputs.feature_set, 'KSUN') || inputs.feature_set == 'FULL'
+      uses: ./.github/actions/kasumi
       with:
         use_latest_commits: ${{ inputs.use_latest_commits }}
 
     - name: SUSFS
-      if: contains(inputs.feature_set, 'SUSFS') || inputs.feature_set == 'FULL'
+      if: (contains(inputs.feature_set, 'SUSFS') || inputs.feature_set == 'FULL') && false
       uses: ./.github/actions/susfs
       with:
         use_latest_commits: ${{ inputs.use_latest_commits }}
@@ -349,6 +363,15 @@ jobs:
       with:
         bypass: true
         version: ${{ inputs.version }}
+
+    - name: Copy Kernel Modules to AnyKernel3
+      if: contains(inputs.feature_set, 'KSUN') || inputs.feature_set == 'FULL'
+      shell: bash
+      run: |
+        mkdir -p "${{ github.workspace }}/AnyKernel3/ramdisk/lib/modules"
+        find /home/runner/out/ -name "kernelsu.ko" -exec cp -f {} "${{ github.workspace }}/AnyKernel3/ramdisk/lib/modules/" \;
+        find /home/runner/out/ -name "kasumi_lkm.ko" -exec cp -f {} "${{ github.workspace }}/AnyKernel3/ramdisk/lib/modules/" \;
+        ls -la "${{ github.workspace }}/AnyKernel3/ramdisk/lib/modules/" || true
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v7
