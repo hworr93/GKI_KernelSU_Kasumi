@@ -46,18 +46,19 @@ runs:
         mkdir -p "$DRIVER_DIR/kasumi"
         cp -r Kasumi/src/. "$DRIVER_DIR/kasumi/"
 
-        # Create symlink for kasumi_bootstrap.h so kasumi_main.c can find it
-        # at the top level via #include "kasumi_bootstrap.h"
-        ln -sf core/kasumi_bootstrap.h "$DRIVER_DIR/kasumi/kasumi_bootstrap.h"
+        # Kleaf/Bazel builds out-of-tree (O=<output_dir>), so $(src) in ccflags-y
+        # resolves to a relative path like "drivers/kasumi" that the compiler
+        # can't find from the output tree. Use $(srctree)/$(src) for absolute paths.
+        sed -i 's|-I$(src)/|-I$(srctree)/$(src)/|g' "$DRIVER_DIR/kasumi/Makefile"
 
         # Create Kconfig for drivers/kasumi
         cat << 'EOF' > "$DRIVER_DIR/kasumi/Kconfig"
-        config KASUMI
-          tristate "Kasumi LKM support"
-          default m
-          help
-            Enable Kasumi out-of-tree Linux kernel module in-tree.
-        EOF
+config KASUMI
+	tristate "Kasumi LKM support"
+	default m
+	help
+	  Enable Kasumi out-of-tree Linux kernel module in-tree.
+EOF
 
         # Hook into drivers Makefile and Kconfig
         grep -q "kasumi" "$DRIVER_DIR/Makefile" || echo "obj-\$(CONFIG_KASUMI) += kasumi/" >> "$DRIVER_DIR/Makefile"
