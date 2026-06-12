@@ -74,40 +74,42 @@ runs:
         [ "$DRIVER_DIR" = "drivers" ] && BUILD_BAZEL="BUILD.bazel"
         if [ -f "$BUILD_BAZEL" ]; then
           python3 -c "
-        import sys
-        path = '$BUILD_BAZEL'
-        with open(path) as f:
-            content = f.read()
-        # Find kernel_build(name = 'kernel_aarch64' and insert module_outs
-        # before the matching closing ')', tracking paren depth.
-        idx = content.find('name = \"kernel_aarch64\"')
-        if idx < 0:
-            sys.exit(0)
-        # Walk back to find the opening kernel_build(
-        line_start = content.rfind('\n', 0, idx) + 1
-        build_start = content.rfind('kernel_build(', line_start - 50, line_start)
-        if build_start < 0:
-            sys.exit(0)
-        # Walk forward tracking paren depth to find the closing paren
-        depth = 0
-        in_str = False
-        for i in range(build_start, len(content)):
-            ch = content[i]
-            if ch == '\"' and (i == 0 or content[i-1] != '\\\\'):
-                in_str = not in_str
-            if not in_str:
-                if ch == '(':
-                    depth += 1
-                elif ch == ')':
-                    depth -= 1
-                    if depth == 0:
-                        indent = '    '
-                        entry = f'{indent}module_outs = [\n{indent}    \"drivers/kasumi/kasumi_lkm.ko\",\n{indent}],\n'
-                        content = content[:i] + entry + content[i:]
-                        with open(path, 'w') as f:
-                            f.write(content)
-                        sys.exit(0)
-        "
+import sys
+path = '$BUILD_BAZEL'
+with open(path) as f:
+    content = f.read()
+# Find kernel_build(name = 'kernel_aarch64' and insert module_outs
+# before the matching closing ')', tracking paren depth.
+idx = content.find('name = \"kernel_aarch64\"')
+if idx < 0:
+    print('ERROR: kernel_aarch64 target not found in BUILD.bazel', file=sys.stderr)
+    sys.exit(1)
+# Walk back to find the opening kernel_build(
+line_start = content.rfind('\n', 0, idx) + 1
+build_start = content.rfind('kernel_build(', 0, line_start)
+if build_start < 0:
+    print('ERROR: kernel_build( not found before kernel_aarch64 target', file=sys.stderr)
+    sys.exit(1)
+# Walk forward tracking paren depth to find the closing paren
+depth = 0
+in_str = False
+for i in range(build_start, len(content)):
+    ch = content[i]
+    if ch == '\"' and (i == 0 or content[i-1] != '\\\\'):
+        in_str = not in_str
+    if not in_str:
+        if ch == '(':
+            depth += 1
+        elif ch == ')':
+            depth -= 1
+            if depth == 0:
+                indent = '    '
+                entry = f'{indent}module_outs = [\n{indent}    \"drivers/kasumi/kasumi_lkm.ko\",\n{indent}],\n'
+                content = content[:i] + entry + content[i:]
+                with open(path, 'w') as f:
+                    f.write(content)
+                sys.exit(0)
+"
         fi
 
     - name: Enable Kernel Configs
