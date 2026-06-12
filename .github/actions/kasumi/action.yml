@@ -64,12 +64,12 @@ runs:
         # Create Kconfig for drivers/kasumi
         T=$'\t'
         cat > "$DRIVER_DIR/kasumi/Kconfig" << EOF
-config KASUMI
-${T}tristate "Kasumi LKM support"
-${T}default m
-${T}help
-${T}  Enable Kasumi out-of-tree Linux kernel module in-tree.
-EOF
+        config KASUMI
+        ${T}tristate "Kasumi LKM support"
+        ${T}default m
+        ${T}help
+        ${T}  Enable Kasumi out-of-tree Linux kernel module in-tree.
+        EOF
 
         # Hook into drivers Makefile and Kconfig
         grep -q "kasumi" "$DRIVER_DIR/Makefile" || echo "obj-\$(CONFIG_KASUMI) += kasumi/" >> "$DRIVER_DIR/Makefile"
