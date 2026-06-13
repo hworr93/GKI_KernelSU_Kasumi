@@ -120,7 +120,7 @@ runs:
         # Add kasumi_lkm.ko to BUILD.bazel module_outs so Kleaf copies it to output.
         BUILD_BAZEL="${DRIVER_DIR%/drivers}/BUILD.bazel"
         [ "$DRIVER_DIR" = "drivers" ] && BUILD_BAZEL="BUILD.bazel"
-        
+
         if [ -f "$BUILD_BAZEL" ]; then
           MODULE_ENTRY="drivers/kasumi/kasumi_lkm.ko"
           export BUILD_BAZEL MODULE_ENTRY
