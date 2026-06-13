@@ -55,54 +55,89 @@ runs:
       env:
         PATCH_SCRIPT: |
           import re, sys, os
+
           path = os.environ.get('BUILD_BAZEL')
           entry = os.environ.get('MODULE_ENTRY')
-          print(f"Patching {path} for {entry}")
+          print(f"[yukisu-patch] Patching '{path}' to add '{entry}'")
+
+          if not os.path.isfile(path):
+              print(f"[yukisu-patch] ERROR: file not found: {path}", file=sys.stderr)
+              sys.exit(1)
+
           with open(path) as f:
               content = f.read()
+
           if entry in content:
-              print("Already present, skipping")
+              print(f"[yukisu-patch] '{entry}' already present, skipping.")
               sys.exit(0)
-          target_match = re.search(r'name\s*=\s*["\']kernel_aarch64["\']', content)
-          if target_match:
-              print("Found kernel_aarch64 target")
-              idx = target_match.start()
-              block_starts = [m.start() for m in re.finditer(r'^\s*kernel_build\s*\(', content, re.M) if m.start() < idx]
-              if not block_starts:
-                  block_starts = [m.start() for m in re.finditer(r'^\s*\w+\s*\(', content, re.M) if m.start() < idx]
-              if block_starts:
-                  build_start = block_starts[-1]
-                  paren_start = content.index('(', build_start)
-                  depth = 0
-                  block_end = -1
-                  for j in range(paren_start, len(content)):
-                      if content[j] == '(':
-                          depth += 1
-                      elif content[j] == ')':
-                          depth -= 1
-                          if depth == 0:
-                              block_end = j
-                              break
-                  if block_end >= 0:
-                      block_content = content[build_start:block_end+1]
-                      match_outs = re.search(r'module_outs\s*=\s*\[', block_content)
-                      if match_outs:
-                          end_idx = match_outs.end()
-                          new_block_content = block_content[:end_idx] + '\n        "' + entry + '",' + block_content[end_idx:]
-                          content = content[:build_start] + new_block_content + content[block_end+1:]
-                          with open(path, 'w') as f:
-                              f.write(content)
-                          print("Appended to existing module_outs")
-                          sys.exit(0)
-                      else:
-                          indent = '    '
-                          module_outs = '\n' + indent + 'module_outs = [\n' + indent + '        "' + entry + '",\n' + indent + '],\n'
-                          content = content[:block_end] + module_outs + content[block_end:]
-                          with open(path, 'w') as f:
-                              f.write(content)
-                          print("Added module_outs block")
-                          sys.exit(0)
-          print("WARNING: could not patch module_outs")
+
+          # Find where 'name = "kernel_aarch64"' appears
+          name_match = re.search(r'name\s*=\s*["\']kernel_aarch64["\']', content)
+          if not name_match:
+              print(f"[yukisu-patch] ERROR: kernel_aarch64 target not found in {path}", file=sys.stderr)
+              sys.exit(1)
+
+          name_pos = name_match.start()
+
+          # Find the kernel_build( that starts BEFORE the name= occurrence
+          kb_matches = list(re.finditer(r'^[ \t]*kernel_build\s*\(', content, re.M))
+          block_start = None
+          for m in reversed(kb_matches):
+              if m.start() < name_pos:
+                  block_start = m.start()
+                  break
+
+          if block_start is None:
+              print(f"[yukisu-patch] ERROR: could not locate kernel_build( before kernel_aarch64 name", file=sys.stderr)
+              sys.exit(1)
+
+          print(f"[yukisu-patch] Found kernel_build( at offset {block_start}")
+
+          # Walk forward to find matching closing paren
+          paren_start = content.index('(', block_start)
+          depth = 0
+          block_end = -1
+          for j in range(paren_start, len(content)):
+              if content[j] == '(':
+                  depth += 1
+              elif content[j] == ')':
+                  depth -= 1
+                  if depth == 0:
+                      block_end = j
+                      break
+
+          if block_end < 0:
+              print(f"[yukisu-patch] ERROR: unbalanced parentheses in BUILD.bazel", file=sys.stderr)
+              sys.exit(1)
+
+          block_content = content[block_start:block_end + 1]
+          print(f"[yukisu-patch] kernel_aarch64 block ({len(block_content)} chars):")
+          print(block_content[:500])
+
+          # Check if module_outs already exists in this block
+          mo_match = re.search(r'(module_outs\s*=\s*\[)', block_content)
+          if mo_match:
+              # Insert our entry at the start of the list
+              insert_at = block_start + mo_match.end()
+              new_content = content[:insert_at] + '\n        "' + entry + '",' + content[insert_at:]
+              print(f"[yukisu-patch] Inserted into existing module_outs list")
+          else:
+              # No module_outs attribute — add one just before the closing paren
+              mo_block = '\n    module_outs = [\n        "' + entry + '",\n    ],\n'
+              new_content = content[:block_end] + mo_block + content[block_end:]
+              print(f"[yukisu-patch] Added new module_outs attribute")
+
+          with open(path, 'w') as f:
+              f.write(new_content)
+
+          # Verify
+          with open(path) as f:
+              verify = f.read()
+          if entry in verify:
+              print(f"[yukisu-patch] SUCCESS: '{entry}' confirmed in {path}")
+          else:
+              print(f"[yukisu-patch] ERROR: verification failed - entry not found after write!", file=sys.stderr)
+              sys.exit(1)
       run: |
         set -euo pipefail
 
@@ -112,19 +147,30 @@ runs:
           DRIVER_DIR="drivers"
         fi
 
-        BUILD_BAZEL="${DRIVER_DIR%/drivers}/BUILD.bazel"
-        [ "$DRIVER_DIR" = "drivers" ] && BUILD_BAZEL="BUILD.bazel"
+        if [ "$DRIVER_DIR" = "common/drivers" ]; then
+          BUILD_BAZEL="common/BUILD.bazel"
+        else
+          BUILD_BAZEL="BUILD.bazel"
+        fi
 
         if [ -f "$BUILD_BAZEL" ]; then
           MODULE_ENTRY="drivers/kernelsu/kernelsu.ko"
           export BUILD_BAZEL MODULE_ENTRY
-          echo "File $BUILD_BAZEL exists, checking for $MODULE_ENTRY..."
+          echo "BUILD.bazel path: $BUILD_BAZEL"
+          echo "Checking for $MODULE_ENTRY in $BUILD_BAZEL ..."
+          grep -n "module_outs" "$BUILD_BAZEL" | head -20 || true
           if ! grep -q "$MODULE_ENTRY" "$BUILD_BAZEL" 2>/dev/null; then
             echo "Module not yet in module_outs. Running Python patcher..."
             python3 -c "$PATCH_SCRIPT"
+            echo "--- Patched BUILD.bazel kernel_aarch64 section ---"
+            grep -A5 'module_outs' "$BUILD_BAZEL" | head -40 || true
+          else
+            echo "Module entry already present, skipping patch."
           fi
         else
-          echo "WARNING: $BUILD_BAZEL not found"
+          echo "ERROR: $BUILD_BAZEL not found! Listing kernel dir:"
+          ls -la || true
+          exit 1
         fi
 
     - name: Enable Kernel Configs
