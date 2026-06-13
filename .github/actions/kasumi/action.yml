@@ -1,14 +1,12 @@
 name: Setup Kasumi
 description: Download and configure Kasumi as an in-tree kernel module
 
-# 1. Replaced 'on: workflow_dispatch' with standard composite action inputs
 inputs:
   use_latest_commits:
     description: 'Use the latest commit on the branch instead of the pinned commit'
     required: false
     default: 'true'
 
-# 2. Replaced the 'jobs' block with 'runs: using: "composite"'
 runs:
   using: "composite"
   steps:
@@ -40,6 +38,50 @@ runs:
     - name: Integrate Kasumi into Kernel Tree
       shell: bash
       working-directory: ${{ github.workspace }}/kernel
+      env:
+        # Move the Python script to an environment variable to avoid YAML/Python indentation clashes
+        PATCH_SCRIPT: |
+          import re, sys, os
+          path = os.environ.get('BUILD_BAZEL')
+          entry = os.environ.get('MODULE_ENTRY')
+          print(f"Patching {path} for {entry}")
+          with open(path) as f:
+              content = f.read()
+          if entry in content:
+              print("Already present, skipping")
+              sys.exit(0)
+          if 'name = "kernel_aarch64"' in content:
+              print("Found kernel_aarch64 target")
+              # Find module_outs and append
+              if 'module_outs' in content:
+                  content = content.replace('module_outs = [', 'module_outs = [\n        "' + entry + '",', 1)
+                  with open(path, 'w') as f:
+                      f.write(content)
+                  print("Appended to existing module_outs")
+                  sys.exit(0)
+              # No module_outs - add before closing paren of kernel_build block
+              idx = content.find('name = "kernel_aarch64"')
+              # Find the opening kernel_build ( before it
+              line_start = content.rfind('\n', 0, idx) + 1
+              build_start = content.rfind('kernel_build(', 0, line_start)
+              if build_start >= 0:
+                  # Find matching closing ) by tracking depth
+                  depth = 0
+                  paren_start = content.index('(', build_start)
+                  for i in range(paren_start, len(content)):
+                      if content[i] == '(':
+                          depth += 1
+                      elif content[i] == ')':
+                          depth -= 1
+                          if depth == 0:
+                              indent = '    '
+                              module_outs = indent + 'module_outs = [\n' + indent + '        "' + entry + '",\n' + indent + '],\n'
+                              content = content[:i] + '\n' + module_outs + content[i:]
+                              with open(path, 'w') as f:
+                                  f.write(content)
+                              print("Added module_outs block")
+                              sys.exit(0)
+          print("WARNING: could not patch module_outs")
       run: |
         set -euo pipefail
 
@@ -85,49 +127,8 @@ runs:
           echo "File $BUILD_BAZEL exists, checking for $MODULE_ENTRY..."
           if ! grep -q "$MODULE_ENTRY" "$BUILD_BAZEL" 2>/dev/null; then
             echo "Module not yet in module_outs. Running Python patcher..."
-            python3 << 'PYEOF'
-        import re, sys, os
-        path = os.environ.get('BUILD_BAZEL')
-        entry = os.environ.get('MODULE_ENTRY')
-        print(f"Patching {path} for {entry}")
-        with open(path) as f:
-            content = f.read()
-        if entry in content:
-            print("Already present, skipping")
-            sys.exit(0)
-        if 'name = "kernel_aarch64"' in content:
-            print("Found kernel_aarch64 target")
-            # Find module_outs and append
-            if 'module_outs' in content:
-                content = content.replace('module_outs = [', 'module_outs = [\n        "' + entry + '",', 1)
-                with open(path, 'w') as f:
-                    f.write(content)
-                print("Appended to existing module_outs")
-                sys.exit(0)
-            # No module_outs - add before closing paren of kernel_build block
-            idx = content.find('name = "kernel_aarch64"')
-            # Find the opening kernel_build ( before it
-            line_start = content.rfind('\n', 0, idx) + 1
-            build_start = content.rfind('kernel_build(', 0, line_start)
-            if build_start >= 0:
-                # Find matching closing ) by tracking depth
-                depth = 0
-                paren_start = content.index('(', build_start)
-                for i in range(paren_start, len(content)):
-                    if content[i] == '(':
-                        depth += 1
-                    elif content[i] == ')':
-                        depth -= 1
-                        if depth == 0:
-                            indent = '    '
-                            module_outs = indent + 'module_outs = [\n' + indent + '        "' + entry + '",\n' + indent + '],\n'
-                            content = content[:i] + '\n' + module_outs + content[i:]
-                            with open(path, 'w') as f:
-                                f.write(content)
-                            print("Added module_outs block")
-                            sys.exit(0)
-        print("WARNING: could not patch module_outs")
-PYEOF
+            # Execute the python script defined in the env block
+            python3 -c "$PATCH_SCRIPT"
           fi
         else
           echo "WARNING: $BUILD_BAZEL not found"
