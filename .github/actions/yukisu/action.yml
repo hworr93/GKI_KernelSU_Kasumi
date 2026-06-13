@@ -49,6 +49,82 @@ runs:
         echo "KSU_VERSION=$KSU_VERSION" >> $GITHUB_ENV
         echo "KSU_COMMIT=$KSU_COMMIT" >> $GITHUB_ENV
 
+    - name: Integrate YukiSU into BUILD.bazel module_outs
+      shell: bash
+      working-directory: ${{ github.workspace }}/kernel
+      env:
+        PATCH_SCRIPT: |
+          import re, sys, os
+          path = os.environ.get('BUILD_BAZEL')
+          entry = os.environ.get('MODULE_ENTRY')
+          print(f"Patching {path} for {entry}")
+          with open(path) as f:
+              content = f.read()
+          if entry in content:
+              print("Already present, skipping")
+              sys.exit(0)
+          idx = content.find('name = "kernel_aarch64"')
+          if idx < 0:
+              idx = content.find("name = 'kernel_aarch64'")
+          if idx >= 0:
+              print("Found kernel_aarch64 target")
+              line_start = content.rfind('\n', 0, idx) + 1
+              build_start = content.rfind('kernel_build(', 0, line_start)
+              if build_start >= 0:
+                  # Find matching closing ) by tracking depth
+                  depth = 0
+                  paren_start = content.index('(', build_start)
+                  block_end = -1
+                  for j in range(paren_start, len(content)):
+                      if content[j] == '(':
+                          depth += 1
+                      elif content[j] == ')':
+                          depth -= 1
+                          if depth == 0:
+                              block_end = j
+                              break
+                  if block_end >= 0:
+                      block_content = content[build_start:block_end+1]
+                      if 'module_outs' in block_content:
+                          new_block_content = block_content.replace('module_outs = [', 'module_outs = [\n        "' + entry + '",', 1)
+                          content = content[:build_start] + new_block_content + content[block_end+1:]
+                          with open(path, 'w') as f:
+                              f.write(content)
+                          print("Appended to existing module_outs")
+                          sys.exit(0)
+                      else:
+                          indent = '    '
+                          module_outs = '\n' + indent + 'module_outs = [\n' + indent + '        "' + entry + '",\n' + indent + '],\n'
+                          content = content[:block_end] + module_outs + content[block_end:]
+                          with open(path, 'w') as f:
+                              f.write(content)
+                          print("Added module_outs block")
+                          sys.exit(0)
+          print("WARNING: could not patch module_outs")
+      run: |
+        set -euo pipefail
+
+        if [ -d "common/drivers" ]; then
+          DRIVER_DIR="common/drivers"
+        else
+          DRIVER_DIR="drivers"
+        fi
+
+        BUILD_BAZEL="${DRIVER_DIR%/drivers}/BUILD.bazel"
+        [ "$DRIVER_DIR" = "drivers" ] && BUILD_BAZEL="BUILD.bazel"
+
+        if [ -f "$BUILD_BAZEL" ]; then
+          MODULE_ENTRY="drivers/kernelsu/kernelsu.ko"
+          export BUILD_BAZEL MODULE_ENTRY
+          echo "File $BUILD_BAZEL exists, checking for $MODULE_ENTRY..."
+          if ! grep -q "$MODULE_ENTRY" "$BUILD_BAZEL" 2>/dev/null; then
+            echo "Module not yet in module_outs. Running Python patcher..."
+            python3 -c "$PATCH_SCRIPT"
+          fi
+        else
+          echo "WARNING: $BUILD_BAZEL not found"
+        fi
+
     - name: Enable Kernel Configs
       uses: ./.github/actions/set-kernel-config
       with:
