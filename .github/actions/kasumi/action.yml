@@ -82,51 +82,55 @@ runs:
         if [ -f "$BUILD_BAZEL" ]; then
           MODULE_ENTRY="drivers/kasumi/kasumi_lkm.ko"
           export BUILD_BAZEL MODULE_ENTRY
+          echo "File $BUILD_BAZEL exists, checking for $MODULE_ENTRY..."
           if ! grep -q "$MODULE_ENTRY" "$BUILD_BAZEL" 2>/dev/null; then
-            echo "Adding $MODULE_ENTRY to $BUILD_BAZEL module_outs..."
+            echo "Module not yet in module_outs. Running Python patcher..."
             python3 << 'PYEOF'
-import re, sys, os
-path = os.environ.get('BUILD_BAZEL', 'common/BUILD.bazel')
-entry = os.environ.get('MODULE_ENTRY', 'drivers/kasumi/kasumi_lkm.ko')
-with open(path) as f:
-    content = f.read()
-if entry in content:
-    sys.exit(0)
-lines = content.split('\n')
-in_block = False
-block_start = None
-for i, line in enumerate(lines):
-    if re.search(r'kernel_build\s*\(', line):
-        in_block = True
-        block_start = i
-    if in_block:
-        if re.search(r'name\s*=\s*["'"'"']kernel_aarch64["'"'"']', line):
-            depth = 0
-            for j in range(block_start, len(lines)):
-                if '(' in lines[j]: depth += lines[j].count('(')
-                if ')' in lines[j]: depth -= lines[j].count(')')
-                if 'module_outs' in lines[j]:
-                    lines.insert(j+1, '    "' + entry + '",')
-                    content = '\n'.join(lines)
-                    with open(path, 'w') as f:
-                        f.write(content)
-                    print('Appended to existing module_outs')
-                    sys.exit(0)
-                if depth <= 0:
-                    indent = re.match(r'^(\s+)', lines[j-1])
-                    ws = indent.group(1) if indent else '    '
-                    lines.insert(j, ws + 'module_outs = [')
-                    lines.insert(j+1, ws + '    "' + entry + '",')
-                    lines.insert(j+2, ws + '],')
-                    content = '\n'.join(lines)
-                    with open(path, 'w') as f:
-                        f.write(content)
-                    print('Added module_outs block')
-                    sys.exit(0)
-            break
-print("WARNING: kernel_aarch64 target not found, module_outs not patched")
+        import re, sys, os
+        path = os.environ.get('BUILD_BAZEL')
+        entry = os.environ.get('MODULE_ENTRY')
+        print(f"Patching {path} for {entry}")
+        with open(path) as f:
+            content = f.read()
+        if entry in content:
+            print("Already present, skipping")
+            sys.exit(0)
+        if 'name = "kernel_aarch64"' in content:
+            print("Found kernel_aarch64 target")
+            # Find module_outs and append
+            if 'module_outs' in content:
+                content = content.replace('module_outs = [', 'module_outs = [\n        "' + entry + '",', 1)
+                with open(path, 'w') as f:
+                    f.write(content)
+                print("Appended to existing module_outs")
+                sys.exit(0)
+            # No module_outs - add before closing paren of kernel_build block
+            idx = content.find('name = "kernel_aarch64"')
+            # Find the opening kernel_build ( before it
+            line_start = content.rfind('\n', 0, idx) + 1
+            build_start = content.rfind('kernel_build(', 0, line_start)
+            if build_start >= 0:
+                # Find matching closing ) by tracking depth
+                depth = 0
+                paren_start = content.index('(', build_start)
+                for i in range(paren_start, len(content)):
+                    if content[i] == '(':
+                        depth += 1
+                    elif content[i] == ')':
+                        depth -= 1
+                        if depth == 0:
+                            indent = '    '
+                            module_outs = indent + 'module_outs = [\n' + indent + '        "' + entry + '",\n' + indent + '],\n'
+                            content = content[:i] + '\n' + module_outs + content[i:]
+                            with open(path, 'w') as f:
+                                f.write(content)
+                            print("Added module_outs block")
+                            sys.exit(0)
+        print("WARNING: could not patch module_outs")
 PYEOF
           fi
+        else
+          echo "WARNING: $BUILD_BAZEL not found"
         fi
 
     - name: Enable Kernel Configs
