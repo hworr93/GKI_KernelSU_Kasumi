@@ -81,17 +81,51 @@ runs:
         
         if [ -f "$BUILD_BAZEL" ]; then
           MODULE_ENTRY="drivers/kasumi/kasumi_lkm.ko"
+          export BUILD_BAZEL MODULE_ENTRY
           if ! grep -q "$MODULE_ENTRY" "$BUILD_BAZEL" 2>/dev/null; then
-            if command -v buildozer &>/dev/null; then
-              buildozer "add module_outs \"$MODULE_ENTRY\"" //common:kernel_aarch64 || \
-                echo "WARNING: buildozer failed to patch module_outs"
-            else
-              # Fallback: download buildozer
-              BUILDOZER_URL="https://github.com/bazelbuild/buildtools/releases/latest/download/buildozer-linux-amd64"
-              curl -fsSL "$BUILDOZER_URL" -o /tmp/buildozer && chmod +x /tmp/buildozer
-              /tmp/buildozer "add module_outs \"$MODULE_ENTRY\"" //common:kernel_aarch64 || \
-                echo "WARNING: buildozer failed to patch module_outs"
-            fi
+            echo "Adding $MODULE_ENTRY to $BUILD_BAZEL module_outs..."
+            python3 << 'PYEOF'
+import re, sys, os
+path = os.environ.get('BUILD_BAZEL', 'common/BUILD.bazel')
+entry = os.environ.get('MODULE_ENTRY', 'drivers/kasumi/kasumi_lkm.ko')
+with open(path) as f:
+    content = f.read()
+if entry in content:
+    sys.exit(0)
+lines = content.split('\n')
+in_block = False
+block_start = None
+for i, line in enumerate(lines):
+    if re.search(r'kernel_build\s*\(', line):
+        in_block = True
+        block_start = i
+    if in_block:
+        if re.search(r'name\s*=\s*["'"'"']kernel_aarch64["'"'"']', line):
+            depth = 0
+            for j in range(block_start, len(lines)):
+                if '(' in lines[j]: depth += lines[j].count('(')
+                if ')' in lines[j]: depth -= lines[j].count(')')
+                if 'module_outs' in lines[j]:
+                    lines.insert(j+1, '    "' + entry + '",')
+                    content = '\n'.join(lines)
+                    with open(path, 'w') as f:
+                        f.write(content)
+                    print('Appended to existing module_outs')
+                    sys.exit(0)
+                if depth <= 0:
+                    indent = re.match(r'^(\s+)', lines[j-1])
+                    ws = indent.group(1) if indent else '    '
+                    lines.insert(j, ws + 'module_outs = [')
+                    lines.insert(j+1, ws + '    "' + entry + '",')
+                    lines.insert(j+2, ws + '],')
+                    content = '\n'.join(lines)
+                    with open(path, 'w') as f:
+                        f.write(content)
+                    print('Added module_outs block')
+                    sys.exit(0)
+            break
+print("WARNING: kernel_aarch64 target not found, module_outs not patched")
+PYEOF
           fi
         fi
 
