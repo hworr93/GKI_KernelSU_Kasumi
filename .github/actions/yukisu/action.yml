@@ -219,6 +219,12 @@ runs:
           DRIVER_DIR="drivers"
         fi
 
+        if [ -L "$DRIVER_DIR/kernelsu" ]; then
+          echo "Replacing kernelsu symlink with direct copy for Bazel sandbox compatibility..."
+          rm "$DRIVER_DIR/kernelsu"
+          cp -r KernelSU/kernel "$DRIVER_DIR/kernelsu"
+        fi
+
         if [ "$DRIVER_DIR" = "common/drivers" ]; then
           BUILD_BAZEL="common/BUILD.bazel"
         else
