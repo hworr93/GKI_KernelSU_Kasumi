@@ -97,15 +97,30 @@ runs:
                   block_content = content[ck_match.start():block_end + 1]
                   print(f"[yukisu-patch] common_kernel block ({len(block_content)} chars)")
 
-                  mo_match = re.search(r'module_outs\s*=\s*\[', block_content)
-                  if mo_match:
-                      insert_at = ck_match.start() + mo_match.end()
+                  mio_match = re.search(r'module_implicit_outs\s*=\s*\[', block_content)
+                  has_mio = re.search(r'module_implicit_outs\s*=\s*', block_content)
+                  
+                  if mio_match:
+                      insert_at = ck_match.start() + mio_match.end()
                       new_content = content[:insert_at] + '\n        "' + entry + '",' + content[insert_at:]
-                      print(f"[yukisu-patch] Inserted into existing module_outs in common_kernel")
+                      print(f"[yukisu-patch] Inserted into existing module_implicit_outs in common_kernel")
+                  elif has_mio:
+                      arg_start = ck_match.start() + has_mio.end()
+                      arg_end = -1
+                      depth = 0
+                      for i in range(arg_start, block_end):
+                          if content[i] in '([{': depth += 1
+                          elif content[i] in ')]}': depth -= 1
+                          elif content[i] == ',' and depth == 0:
+                              arg_end = i
+                              break
+                      if arg_end != -1:
+                          new_content = content[:arg_end] + ' + ["' + entry + '"]' + content[arg_end:]
+                          print(f"[yukisu-patch] Appended to expression in module_implicit_outs in common_kernel")
                   else:
-                      mo_block = '\n    module_outs = [\n        "' + entry + '",\n    ],\n'
-                      new_content = content[:block_end] + mo_block + content[block_end:]
-                      print(f"[yukisu-patch] Added module_outs attribute to common_kernel")
+                      mio_block = '\n    module_implicit_outs = [\n        "' + entry + '",\n    ],\n'
+                      new_content = content[:block_end] + mio_block + content[block_end:]
+                      print(f"[yukisu-patch] Added module_implicit_outs attribute to common_kernel")
 
           # Strategy 2: define_common_kernels(target_configs = {"kernel_aarch64": {...}, ...})
           if new_content is None:
@@ -114,7 +129,6 @@ runs:
                   print(f"[yukisu-patch] Found define_common_kernels() at offset {dcm_match.start()}")
                   dcm_call_end = find_block_end(content, dcm_match.end() - 1)
                   dcm_block = content[dcm_match.start():dcm_call_end + 1]
-                  print(f"[yukisu-patch] define_common_kernels block (first 300 chars): {dcm_block[:300]}")
 
                   ka_key = re.search(r'["\']kernel_aarch64["\']\s*:\s*\{', dcm_block)
                   if ka_key:
@@ -122,19 +136,33 @@ runs:
                       ka_dict_open = dcm_match.start() + ka_key.end() - 1
                       ka_dict_end = find_block_end(content, ka_dict_open)
                       ka_block = content[ka_dict_open:ka_dict_end + 1]
-                      print(f"[yukisu-patch] kernel_aarch64 dict block: {ka_block[:400]}")
 
-                      mo_match = re.search(r'"module_outs"\s*:\s*\[', ka_block)
-                      if mo_match:
-                          insert_at = ka_dict_open + mo_match.end()
+                      mio_match = re.search(r'"module_implicit_outs"\s*:\s*\[', ka_block)
+                      has_mio = re.search(r'"module_implicit_outs"\s*:\s*', ka_block)
+                      
+                      if mio_match:
+                          insert_at = ka_dict_open + mio_match.end()
                           new_content = content[:insert_at] + '\n            "' + entry + '",' + content[insert_at:]
-                          print(f"[yukisu-patch] Inserted into existing module_outs in define_common_kernels dict")
+                          print(f"[yukisu-patch] Inserted into existing module_implicit_outs in define_common_kernels dict")
+                      elif has_mio:
+                          arg_start = ka_dict_open + has_mio.end()
+                          arg_end = -1
+                          depth = 0
+                          for i in range(arg_start, ka_dict_end):
+                              if content[i] in '([{': depth += 1
+                              elif content[i] in ')]}': depth -= 1
+                              elif content[i] == ',' and depth == 0:
+                                  arg_end = i
+                                  break
+                          if arg_end != -1:
+                              new_content = content[:arg_end] + ' + ["' + entry + '"]' + content[arg_end:]
+                              print(f"[yukisu-patch] Appended to expression in module_implicit_outs in define_common_kernels dict")
+                          else:
+                              new_content = content[:ka_dict_end] + ' + ["' + entry + '"]\n        ' + content[ka_dict_end:]
                       else:
-                          mo_entry = '\n        "module_outs": [\n            "' + entry + '",\n        ],'
-                          new_content = content[:ka_dict_end] + mo_entry + content[ka_dict_end:]
-                          print(f"[yukisu-patch] Added module_outs to kernel_aarch64 dict in define_common_kernels")
-                  else:
-                      print(f"[yukisu-patch] kernel_aarch64 key not found in define_common_kernels block")
+                          mio_entry = '\n        "module_implicit_outs": [\n            "' + entry + '",\n        ],'
+                          new_content = content[:ka_dict_end] + mio_entry + content[ka_dict_end:]
+                          print(f"[yukisu-patch] Added module_implicit_outs to kernel_aarch64 dict in define_common_kernels")
 
           # Strategy 3: classic kernel_build(name = "kernel_aarch64", module_outs = [...])
           # Used in android14-6.1 and older kernels.
