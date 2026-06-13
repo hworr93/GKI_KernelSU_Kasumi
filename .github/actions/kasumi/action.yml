@@ -76,52 +76,23 @@ runs:
         sed -i 's/obj-m += kasumi_lkm.o/obj-$(CONFIG_KASUMI) += kasumi_lkm.o/' "$DRIVER_DIR/kasumi/Makefile"
 
         # Add kasumi_lkm.ko to BUILD.bazel module_outs so Kleaf copies it to output.
-        export BUILD_BAZEL="${DRIVER_DIR%/drivers}/BUILD.bazel"
-        [ "$DRIVER_DIR" = "drivers" ] && export BUILD_BAZEL="BUILD.bazel"
+        BUILD_BAZEL="${DRIVER_DIR%/drivers}/BUILD.bazel"
+        [ "$DRIVER_DIR" = "drivers" ] && BUILD_BAZEL="BUILD.bazel"
         
         if [ -f "$BUILD_BAZEL" ]; then
-          # Use Python Heredoc to safely bypass Bash escape sequence collision
-          python3 - << 'EOF'
-        import sys
-        import os
-
-        path = os.environ.get('BUILD_BAZEL')
-        with open(path) as f:
-            content = f.read()
-
-        idx = content.find('name = "kernel_aarch64"')
-        if idx < 0:
-            print('WARNING: kernel_aarch64 target not found in BUILD.bazel, skipping module_outs patch', file=sys.stderr)
-            sys.exit(0)
-
-        line_start = content.rfind('\n', 0, idx) + 1
-        build_start = content.rfind('kernel_build(', 0, line_start)
-        if build_start < 0:
-            print('WARNING: kernel_build( not found before kernel_aarch64 target, skipping module_outs patch', file=sys.stderr)
-            sys.exit(0)
-
-        depth = 0
-        in_str = False
-        for i in range(build_start, len(content)):
-            ch = content[i]
-            if ch == '"' and (i == 0 or content[i-1] != '\\'):
-                in_str = not in_str
-            if not in_str:
-                if ch == '(':
-                    depth += 1
-                elif ch == ')':
-                    depth -= 1
-                    if depth == 0:
-                        indent = '    '
-                        entry = f'{indent}module_outs = [\n{indent}    "drivers/kasumi/kasumi_lkm.ko",\n{indent}],\n'
-                        content = content[:i] + entry + content[i:]
-                        with open(path, 'w') as f:
-                            f.write(content)
-                        sys.exit(0)
-        
-        print('WARNING: Reached EOF without finding closing parenthesis, skipping module_outs patch', file=sys.stderr)
-        sys.exit(0)
-        EOF
+          MODULE_ENTRY="drivers/kasumi/kasumi_lkm.ko"
+          if ! grep -q "$MODULE_ENTRY" "$BUILD_BAZEL" 2>/dev/null; then
+            if command -v buildozer &>/dev/null; then
+              buildozer "add module_outs \"$MODULE_ENTRY\"" //common:kernel_aarch64 || \
+                echo "WARNING: buildozer failed to patch module_outs"
+            else
+              # Fallback: download buildozer
+              BUILDOZER_URL="https://github.com/bazelbuild/buildtools/releases/latest/download/buildozer-linux-amd64"
+              curl -fsSL "$BUILDOZER_URL" -o /tmp/buildozer && chmod +x /tmp/buildozer
+              /tmp/buildozer "add module_outs \"$MODULE_ENTRY\"" //common:kernel_aarch64 || \
+                echo "WARNING: buildozer failed to patch module_outs"
+            fi
+          fi
         fi
 
     - name: Enable Kernel Configs
