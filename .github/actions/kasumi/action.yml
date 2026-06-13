@@ -59,62 +59,84 @@ runs:
               print(f"[kasumi-patch] '{entry}' already present, skipping.")
               sys.exit(0)
 
-          # Find where 'name = "kernel_aarch64"' appears
-          name_match = re.search(r'name\s*=\s*["\']kernel_aarch64["\']', content)
-          if not name_match:
-              print(f"[kasumi-patch] ERROR: kernel_aarch64 target not found in {path}", file=sys.stderr)
+          def find_block_end(text, start):
+              """Find the matching closing paren/bracket for the open paren/bracket at or after start."""
+              open_ch = text[start]
+              close_ch = ')' if open_ch == '(' else ']'
+              depth = 0
+              for i in range(start, len(text)):
+                  if text[i] == open_ch:
+                      depth += 1
+                  elif text[i] == close_ch:
+                      depth -= 1
+                      if depth == 0:
+                          return i
+              return -1
+
+          new_content = None
+
+          # Strategy 1: define_common_kernels(target_configs = {"kernel_aarch64": {...}, ...})
+          # Used in android15-6.6 and newer. kernel_aarch64 is a dict key, not a kernel_build() call.
+          dcm_match = re.search(r'define_common_kernels\s*\(', content)
+          if dcm_match:
+              print(f"[kasumi-patch] Found define_common_kernels() at offset {dcm_match.start()}")
+              dcm_call_end = find_block_end(content, dcm_match.end() - 1)
+              dcm_block = content[dcm_match.start():dcm_call_end + 1]
+              print(f"[kasumi-patch] define_common_kernels block (first 300 chars): {dcm_block[:300]}")
+
+              ka_key = re.search(r'["\']kernel_aarch64["\']\s*:\s*\{', dcm_block)
+              if ka_key:
+                  print(f"[kasumi-patch] Found kernel_aarch64 dict entry at offset {ka_key.start()}")
+                  ka_dict_open = dcm_match.start() + ka_key.end() - 1  # position of '{'
+                  ka_dict_end = find_block_end(content, ka_dict_open)
+                  ka_block = content[ka_dict_open:ka_dict_end + 1]
+                  print(f"[kasumi-patch] kernel_aarch64 dict block: {ka_block[:400]}")
+
+                  mo_match = re.search(r'"module_outs"\s*:\s*\[', ka_block)
+                  if mo_match:
+                      insert_at = ka_dict_open + mo_match.end()
+                      new_content = content[:insert_at] + '\n            "' + entry + '",' + content[insert_at:]
+                      print(f"[kasumi-patch] Inserted into existing module_outs in define_common_kernels dict")
+                  else:
+                      mo_entry = '\n        "module_outs": [\n            "' + entry + '",\n        ],'
+                      new_content = content[:ka_dict_end] + mo_entry + content[ka_dict_end:]
+                      print(f"[kasumi-patch] Added module_outs to kernel_aarch64 dict in define_common_kernels")
+              else:
+                  print(f"[kasumi-patch] kernel_aarch64 key not found in define_common_kernels block")
+
+          # Strategy 2: classic kernel_build(name = "kernel_aarch64", ...) block
+          if new_content is None:
+              name_match = re.search(r'name\s*=\s*["\']kernel_aarch64["\']', content)
+              if name_match:
+                  name_pos = name_match.start()
+                  kb_matches = list(re.finditer(r'^[ \t]*kernel_build(?:_abi)?\s*\(', content, re.M))
+                  block_start = None
+                  for m in reversed(kb_matches):
+                      if m.start() < name_pos:
+                          block_start = m.start()
+                          break
+                  if block_start is not None:
+                      print(f"[kasumi-patch] Found kernel_build( at offset {block_start}")
+                      paren_start = content.index('(', block_start)
+                      block_end = find_block_end(content, paren_start)
+                      if block_end >= 0:
+                          block_content = content[block_start:block_end + 1]
+                          print(f"[kasumi-patch] kernel_aarch64 block ({len(block_content)} chars): {block_content[:300]}")
+                          mo_match = re.search(r'module_outs\s*=\s*\[', block_content)
+                          if mo_match:
+                              insert_at = block_start + mo_match.end()
+                              new_content = content[:insert_at] + '\n        "' + entry + '",' + content[insert_at:]
+                              print(f"[kasumi-patch] Inserted into existing module_outs list")
+                          else:
+                              mo_block = '\n    module_outs = [\n        "' + entry + '",\n    ],\n'
+                              new_content = content[:block_end] + mo_block + content[block_end:]
+                              print(f"[kasumi-patch] Added new module_outs attribute")
+
+          if new_content is None:
+              print(f"[kasumi-patch] ERROR: could not find kernel_aarch64 target (tried define_common_kernels and kernel_build)", file=sys.stderr)
+              for m in re.finditer(r'(?:name\s*=\s*|")(kernel[^"\s,]+)(?:"|\s*[=,])', content):
+                  print(f"  {m.group(1)}")
               sys.exit(1)
-
-          name_pos = name_match.start()
-
-          # Find the kernel_build( that starts BEFORE the name= occurrence
-          # (the name= arg is inside the kernel_build() call)
-          kb_matches = list(re.finditer(r'^[ \t]*kernel_build\s*\(', content, re.M))
-          block_start = None
-          for m in reversed(kb_matches):
-              if m.start() < name_pos:
-                  block_start = m.start()
-                  break
-
-          if block_start is None:
-              print(f"[kasumi-patch] ERROR: could not locate kernel_build( before kernel_aarch64 name", file=sys.stderr)
-              sys.exit(1)
-
-          print(f"[kasumi-patch] Found kernel_build( at offset {block_start}")
-
-          # Walk forward to find matching closing paren
-          paren_start = content.index('(', block_start)
-          depth = 0
-          block_end = -1
-          for j in range(paren_start, len(content)):
-              if content[j] == '(':
-                  depth += 1
-              elif content[j] == ')':
-                  depth -= 1
-                  if depth == 0:
-                      block_end = j
-                      break
-
-          if block_end < 0:
-              print(f"[kasumi-patch] ERROR: unbalanced parentheses in BUILD.bazel", file=sys.stderr)
-              sys.exit(1)
-
-          block_content = content[block_start:block_end + 1]
-          print(f"[kasumi-patch] kernel_aarch64 block ({len(block_content)} chars):")
-          print(block_content[:500])
-
-          # Check if module_outs already exists in this block
-          mo_match = re.search(r'(module_outs\s*=\s*\[)', block_content)
-          if mo_match:
-              # Insert our entry at the start of the list
-              insert_at = block_start + mo_match.end()
-              new_content = content[:insert_at] + '\n        "' + entry + '",' + content[insert_at:]
-              print(f"[kasumi-patch] Inserted into existing module_outs list")
-          else:
-              # No module_outs attribute — add one just before the closing paren
-              mo_block = '\n    module_outs = [\n        "' + entry + '",\n    ],\n'
-              new_content = content[:block_end] + mo_block + content[block_end:]
-              print(f"[kasumi-patch] Added new module_outs attribute")
 
           with open(path, 'w') as f:
               f.write(new_content)
