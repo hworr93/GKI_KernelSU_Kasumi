@@ -225,6 +225,9 @@ runs:
           cp -r KernelSU/kernel "$DRIVER_DIR/kernelsu"
         fi
 
+        # Fix YukiSU setup.sh bug (missing escape on CONFIG_KSU causing it to evaluate to empty string)
+        sed -i 's/^obj- += kernelsu\/$/obj-$(CONFIG_KSU) += kernelsu\//g' "$DRIVER_DIR/Makefile"
+
         if [ "$DRIVER_DIR" = "common/drivers" ]; then
           BUILD_BAZEL="common/BUILD.bazel"
         else
