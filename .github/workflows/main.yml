@@ -130,7 +130,7 @@ jobs:
 
   rej:
     if: ${{ !inputs.test_release_notes && always() }}
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     permissions:
       actions: read
       contents: read
@@ -215,7 +215,7 @@ jobs:
         if-no-files-found: ignore
 
   release-preview:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.test_release_notes == true }}
     permissions:
       contents: read

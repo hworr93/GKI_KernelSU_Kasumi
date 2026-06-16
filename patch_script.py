@@ -1,0 +1,167 @@
+import os
+import re
+import sys
+
+path = os.environ.get('BUILD_BAZEL')
+entry = os.environ.get('MODULE_ENTRY')
+print(f"[kasumi-patch] Patching '{path}' to add '{entry}'")
+
+if not os.path.isfile(path):
+    print(f"[kasumi-patch] ERROR: file not found: {path}", file=sys.stderr)
+    sys.exit(1)
+
+with open(path) as f:
+    content = f.read()
+
+if entry in content:
+    print(f"[kasumi-patch] '{entry}' already present, skipping.")
+    sys.exit(0)
+
+def find_block_end(text, start):
+    """Find the matching closing paren/bracket/brace for the opener at start."""
+    open_ch = text[start]
+    close_ch = ')' if open_ch == '(' else '}' if open_ch == '{' else ']'
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == open_ch:
+            depth += 1
+        elif text[i] == close_ch:
+            depth -= 1
+            if depth == 0:
+                return i
+    return -1
+
+new_content = None
+
+# Strategy 1: common_kernel(name = "kernel_aarch64", ...)
+ck_match = re.search(r'common_kernel\s*\(\s*name\s*=\s*["\']kernel_aarch64["\']', content)
+if ck_match:
+    print(f"[kasumi-patch] Found common_kernel(name = kernel_aarch64) at offset {ck_match.start()}")
+    paren_start = content.index('(', ck_match.start())
+    block_end = find_block_end(content, paren_start)
+    if block_end >= 0:
+        block_content = content[ck_match.start():block_end + 1]
+        print(f"[kasumi-patch] common_kernel block ({len(block_content)} chars)")
+
+        mio_match = re.search(r'module_implicit_outs\s*=\s*\[', block_content)
+        has_mio = re.search(r'module_implicit_outs\s*=\s*', block_content)
+        
+        if mio_match:
+            insert_at = ck_match.start() + mio_match.end()
+            new_content = content[:insert_at] + '\n        "' + entry + '",' + content[insert_at:]
+            print(f"[kasumi-patch] Inserted into existing module_implicit_outs in common_kernel")
+        elif has_mio:
+            # It has module_implicit_outs but not a literal list, likely a function call.
+            # We will handle this if needed, but usually it's easier to just append + ["..."] if we find the end.
+            arg_start = ck_match.start() + has_mio.end()
+            arg_end = -1
+            depth = 0
+            for i in range(arg_start, block_end):
+                if content[i] in '([{':
+                    depth += 1
+                elif content[i] in ')]}':
+                    depth -= 1
+                elif content[i] == ',' and depth == 0:
+                    arg_end = i
+                    break
+            if arg_end != -1:
+                new_content = content[:arg_end] + ' + ["' + entry + '"]' + content[arg_end:]
+                print(f"[kasumi-patch] Appended to expression in module_implicit_outs in common_kernel")
+        else:
+            mio_block = '\n    module_implicit_outs = [\n        "' + entry + '",\n    ],\n'
+            new_content = content[:block_end] + mio_block + content[block_end:]
+            print(f"[kasumi-patch] Added module_implicit_outs attribute to common_kernel")
+
+# Strategy 2: define_common_kernels(target_configs = {"kernel_aarch64": {...}, ...})
+if new_content is None:
+    dcm_match = re.search(r'define_common_kernels\s*\(', content)
+    if dcm_match:
+        print(f"[kasumi-patch] Found define_common_kernels() at offset {dcm_match.start()}")
+        dcm_call_end = find_block_end(content, dcm_match.end() - 1)
+        dcm_block = content[dcm_match.start():dcm_call_end + 1]
+
+        ka_key = re.search(r'["\']kernel_aarch64["\']\s*:\s*\{', dcm_block)
+        if ka_key:
+            print(f"[kasumi-patch] Found kernel_aarch64 dict entry at offset {ka_key.start()}")
+            ka_dict_open = dcm_match.start() + ka_key.end() - 1  # position of '{'
+            ka_dict_end = find_block_end(content, ka_dict_open)
+            ka_block = content[ka_dict_open:ka_dict_end + 1]
+
+            mio_match = re.search(r'"module_implicit_outs"\s*:\s*\[', ka_block)
+            has_mio = re.search(r'"module_implicit_outs"\s*:\s*', ka_block)
+            
+            if mio_match:
+                insert_at = ka_dict_open + mio_match.end()
+                new_content = content[:insert_at] + '\n            "' + entry + '",' + content[insert_at:]
+                print(f"[kasumi-patch] Inserted into existing module_implicit_outs in define_common_kernels dict")
+            elif has_mio:
+                arg_start = ka_dict_open + has_mio.end()
+                arg_end = -1
+                depth = 0
+                for i in range(arg_start, ka_dict_end):
+                    if content[i] in '([{':
+                        depth += 1
+                    elif content[i] in ')]}':
+                        depth -= 1
+                    elif content[i] == ',' and depth == 0:
+                        arg_end = i
+                        break
+                if arg_end != -1:
+                    new_content = content[:arg_end] + ' + ["' + entry + '"]' + content[arg_end:]
+                    print(f"[kasumi-patch] Appended to expression in module_implicit_outs in define_common_kernels dict")
+                else:
+                    # no comma found, maybe it's the last item in the dict
+                    new_content = content[:ka_dict_end] + ' + ["' + entry + '"]\n        ' + content[ka_dict_end:]
+            else:
+                mio_entry = '\n        "module_implicit_outs": [\n            "' + entry + '",\n        ],'
+                new_content = content[:ka_dict_end] + mio_entry + content[ka_dict_end:]
+                print(f"[kasumi-patch] Added module_implicit_outs to kernel_aarch64 dict in define_common_kernels")
+
+# Strategy 3: classic kernel_build(name = "kernel_aarch64", module_outs = [...])
+# Used in android14-6.1 and older kernels.
+if new_content is None:
+    name_match = re.search(r'name\s*=\s*["\']kernel_aarch64["\']', content)
+    if name_match:
+        name_pos = name_match.start()
+        kb_matches = list(re.finditer(r'^[ \t]*kernel_build(?:_abi)?\s*\(', content, re.M))
+        block_start = None
+        for m in reversed(kb_matches):
+            if m.start() < name_pos:
+                block_start = m.start()
+                break
+        if block_start is not None:
+            print(f"[kasumi-patch] Found kernel_build( at offset {block_start}")
+            paren_start = content.index('(', block_start)
+            block_end = find_block_end(content, paren_start)
+            if block_end >= 0:
+                block_content = content[block_start:block_end + 1]
+                print(f"[kasumi-patch] kernel_aarch64 block ({len(block_content)} chars): {block_content[:300]}")
+                mo_match = re.search(r'module_outs\s*=\s*\[', block_content)
+                if mo_match:
+                    insert_at = block_start + mo_match.end()
+                    new_content = content[:insert_at] + '\n        "' + entry + '",' + content[insert_at:]
+                    print(f"[kasumi-patch] Inserted into existing module_outs list")
+                else:
+                    mo_block = '\n    module_outs = [\n        "' + entry + '",\n    ],\n'
+                    new_content = content[:block_end] + mo_block + content[block_end:]
+                    print(f"[kasumi-patch] Added new module_outs attribute")
+
+if new_content is None:
+    print(f"[kasumi-patch] ERROR: could not find kernel_aarch64 target", file=sys.stderr)
+    for m in re.finditer(r'(?:name\s*=\s*|")(kernel[^"\s,]+)(?:"|\s*[=,])', content):
+        print(f"  {m.group(1)}")
+    sys.exit(1)
+
+with open(path, 'w') as f:
+    f.write(new_content)
+
+# Verify
+with open(path) as f:
+    verify = f.read()
+
+if entry in verify:
+    print(f"[kasumi-patch] SUCCESS: '{entry}' confirmed in {path}")
+else:
+    print(f"[kasumi-patch] ERROR: verification failed - entry not found after write!", file=sys.stderr)
+    sys.exit(1)
+
