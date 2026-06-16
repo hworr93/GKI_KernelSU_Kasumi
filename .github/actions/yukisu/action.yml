@@ -223,6 +223,12 @@ runs:
           echo "Replacing kernelsu symlink with direct copy for Bazel sandbox compatibility..."
           rm "$DRIVER_DIR/kernelsu"
           cp -r KernelSU/kernel "$DRIVER_DIR/kernelsu"
+          # Copy uapi headers (e.g. app_profile.h) from KernelSU root into kernelsu dir
+          # so that <kernelsu>/uapi/app_profile.h is available at build time
+          if [ -d "KernelSU/uapi" ]; then
+            cp -r KernelSU/uapi "$DRIVER_DIR/kernelsu/uapi"
+            echo "Copied uapi headers to $DRIVER_DIR/kernelsu/uapi/"
+          fi
         fi
 
         # Fix YukiSU setup.sh bug (missing escape on CONFIG_KSU causing it to evaluate to empty string)
