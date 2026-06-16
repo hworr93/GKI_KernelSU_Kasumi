@@ -50,12 +50,18 @@ runs:
       cat common/scripts/Makefile.modpost >> common/scripts/Makefile.modpost.warn
       mv common/scripts/Makefile.modpost.warn common/scripts/Makefile.modpost
 
+      # Make depmod's unknown symbol check non-fatal (KernelSU resolves symbols at runtime)
+      if [ -f "build/kernel/build_utils.sh" ]; then
+        sed -i 's/if { grep -q "needs unknown symbol" ${depmod_stderr}; }; then/if false; then/' build/kernel/build_utils.sh
+        echo "Patched depmod unknown symbol check to be non-fatal."
+      fi
+
       cat common/arch/arm64/configs/gki_defconfig
       sed -i 's/check_defconfig//' ./common/build.config.gki
       if [ -f "build/build.sh" ]; then
         BUILD_GKI_ARTIFACTS= \
         BUILD_GKI_CERTIFICATION_TOOLS=0 \
-l        BUILD_SYSTEM_DLKM=0 \
+        BUILD_SYSTEM_DLKM=0 \
         SKIP_VENDOR_BOOT=1 \
         SKIP_EXT_MODULES=1 \
         SKIP_CP_KERNEL_HDR=1 \
