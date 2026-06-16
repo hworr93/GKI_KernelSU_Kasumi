@@ -42,6 +42,14 @@ runs:
     shell: bash
     working-directory: ${{ github.workspace }}/kernel
     run: |
+      # Make modpost treat undefined symbols as warnings (not errors) for external modules.
+      # KernelSU LKM resolves symbols at runtime via /proc/kallsyms, not at link time,
+      # so modpost should not fail on unresolved symbol references.
+      # Setting KBUILD_MODPOST_WARN ensures $(if $(KBUILD_MODPOST_WARN),-w) evaluates to -w.
+      echo "KBUILD_MODPOST_WARN := 1" > common/scripts/Makefile.modpost.warn
+      cat common/scripts/Makefile.modpost >> common/scripts/Makefile.modpost.warn
+      mv common/scripts/Makefile.modpost.warn common/scripts/Makefile.modpost
+
       cat common/arch/arm64/configs/gki_defconfig
       sed -i 's/check_defconfig//' ./common/build.config.gki
       if [ -f "build/build.sh" ]; then
